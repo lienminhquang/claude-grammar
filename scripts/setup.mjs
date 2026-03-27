@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 
 import { getProviders, getModels, getModel } from '@mariozechner/pi-ai';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { createInterface } from 'readline';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const CONFIG_PATH = join(__dirname, '..', 'grammar.config.json');
+const CONFIG_DIR = join(process.env.HOME || process.env.USERPROFILE, '.config', 'claude-grammar');
+const CONFIG_PATH = join(CONFIG_DIR, 'grammar.config.json');
 
 function loadConfig() {
   const defaults = { provider: 'anthropic', model: 'claude-haiku-4-5-20251001', minLength: 10 };
@@ -20,6 +21,7 @@ function loadConfig() {
 }
 
 function saveConfig(config) {
+  mkdirSync(CONFIG_DIR, { recursive: true });
   writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2) + '\n');
 }
 
@@ -90,7 +92,7 @@ async function setupAuth({ ask }, config) {
       try {
         execSync('npx @mariozechner/pi-ai login ' + config.provider, {
           stdio: 'inherit',
-          cwd: join(__dirname, '..')
+          cwd: CONFIG_DIR
         });
         console.log('\nOAuth credentials saved.');
       } catch {
@@ -226,7 +228,7 @@ async function testGrammarCheck() {
 
   // Resolve API key (same logic as grammar-check.mjs)
   const options = {};
-  const authFile = join(__dirname, '..', 'auth.json');
+  const authFile = join(CONFIG_DIR, 'auth.json');
   if (existsSync(authFile)) {
     try {
       const auth = JSON.parse(readFileSync(authFile, 'utf-8'));
@@ -312,7 +314,7 @@ async function oauthLogin() {
   try {
     execSync('npx @mariozechner/pi-ai login ' + config.provider, {
       stdio: 'inherit',
-      cwd: join(__dirname, '..')
+      cwd: CONFIG_DIR
     });
   } catch {
     console.error('OAuth login failed.');

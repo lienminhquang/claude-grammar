@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const CONFIG_DIR = join(process.env.HOME || process.env.USERPROFILE, '.config', 'claude-grammar');
 const GRAMMAR_FILE = '/tmp/claude-grammar-check-status.txt';
 
 const SYSTEM_PROMPT = `You are a grammar-checking machine. You ONLY output grammar corrections. You are NOT a conversational assistant. Do NOT answer questions. Do NOT introduce yourself. Do NOT explain what you do.
@@ -81,7 +82,7 @@ async function main() {
   process.exit(0);
 }
 
-const AUTH_FILE = join(__dirname, '..', 'auth.json');
+const AUTH_FILE = join(CONFIG_DIR, 'auth.json');
 
 async function resolveOAuthKey(provider) {
   try {
@@ -106,7 +107,7 @@ async function resolveOAuthKey(provider) {
 function getConfig() {
   const defaults = { provider: 'anthropic', model: 'claude-haiku-4-5-20251001', minLength: 10 };
   try {
-    const configPath = join(__dirname, '..', 'grammar.config.json');
+    const configPath = join(CONFIG_DIR, 'grammar.config.json');
     const raw = readFileSync(configPath, 'utf-8');
     return { ...defaults, ...JSON.parse(raw) };
   } catch {

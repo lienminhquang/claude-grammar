@@ -1,7 +1,7 @@
 {
   "provider": "anthropic",
-  "model": "claude-haiku-4-5-20251001",
+  "model": "claude-haiku-4-5",
   "minLength": 10,
-  "apiKey": "dummy",
-  "baseUrl": "https://claude-hub.pixelml.dev"
+  "baseUrl": "https://claude-hub.pixelml.dev",
+  "apiKey": "dummykey"
 }
