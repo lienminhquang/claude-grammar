@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { getProviders, getModels, getModel } from '@mariozechner/pi-ai';
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, chmodSync } from 'fs';
 import { createInterface } from 'readline';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -276,15 +276,119 @@ async function testGrammarCheck() {
   }
 }
 
+const CLAUDE_SETTINGS_PATH = join(process.env.HOME || process.env.USERPROFILE, '.claude', 'settings.json');
+
+function loadClaudeSettings() {
+  try {
+    if (existsSync(CLAUDE_SETTINGS_PATH)) {
+      return JSON.parse(readFileSync(CLAUDE_SETTINGS_PATH, 'utf-8'));
+    }
+  } catch {}
+  return {};
+}
+
+function saveClaudeSettings(settings) {
+  mkdirSync(dirname(CLAUDE_SETTINGS_PATH), { recursive: true });
+  writeFileSync(CLAUDE_SETTINGS_PATH, JSON.stringify(settings, null, 2) + '\n');
+}
+
+async function installHooks() {
+  const { execSync } = await import('child_process');
+
+  // Install globally for a stable path
+  console.log('Installing cc-grammar globally...');
+  try {
+    execSync('npm install -g cc-grammar', { stdio: 'inherit' });
+  } catch {
+    console.error('Failed to install globally. Try: sudo npm install -g cc-grammar');
+    process.exit(1);
+  }
+
+  // Find the global install path
+  const globalRoot = execSync('npm root -g', { encoding: 'utf-8' }).trim();
+  const scriptDir = join(globalRoot, 'cc-grammar', 'scripts');
+
+  if (!existsSync(join(scriptDir, 'grammar-check.mjs'))) {
+    console.error('Error: Could not find grammar-check.mjs at ' + scriptDir);
+    process.exit(1);
+  }
+
+  // Register hooks in ~/.claude/settings.json
+  const settings = loadClaudeSettings();
+
+  // Add UserPromptSubmit hook
+  if (!settings.hooks) settings.hooks = {};
+  if (!settings.hooks.UserPromptSubmit) settings.hooks.UserPromptSubmit = [];
+
+  // Remove existing cc-grammar hooks
+  settings.hooks.UserPromptSubmit = settings.hooks.UserPromptSubmit.filter(
+    h => !JSON.stringify(h).includes('grammar-check.mjs')
+  );
+
+  settings.hooks.UserPromptSubmit.push({
+    matcher: '',
+    hooks: [{
+      type: 'command',
+      command: `node ${scriptDir}/grammar-check.mjs`,
+      timeout: 15000
+    }]
+  });
+
+  // Add status line
+  settings.statusLine = {
+    type: 'command',
+    command: `${scriptDir}/grammar-statusline.sh`
+  };
+
+  saveClaudeSettings(settings);
+
+  console.log('\nInstalled successfully!');
+  console.log(`  Hook: node ${scriptDir}/grammar-check.mjs`);
+  console.log(`  Status line: ${scriptDir}/grammar-statusline.sh`);
+  console.log('\nRun "npx cc-grammar setup" to configure provider/model.');
+}
+
+async function uninstallHooks() {
+  const settings = loadClaudeSettings();
+
+  // Remove hooks
+  if (settings.hooks?.UserPromptSubmit) {
+    settings.hooks.UserPromptSubmit = settings.hooks.UserPromptSubmit.filter(
+      h => !JSON.stringify(h).includes('grammar-check.mjs')
+    );
+    if (!settings.hooks.UserPromptSubmit.length) delete settings.hooks.UserPromptSubmit;
+    if (!Object.keys(settings.hooks).length) delete settings.hooks;
+  }
+
+  // Remove status line if it's ours
+  if (settings.statusLine?.command?.includes('grammar-statusline')) {
+    delete settings.statusLine;
+  }
+
+  saveClaudeSettings(settings);
+  console.log('Hooks removed from ~/.claude/settings.json');
+
+  // Uninstall global package
+  const { execSync } = await import('child_process');
+  try {
+    execSync('npm uninstall -g cc-grammar', { stdio: 'inherit' });
+    console.log('Global package removed.');
+  } catch {}
+
+  console.log('\nUninstalled successfully.');
+}
+
 function showHelp() {
   console.log(`Usage:
-  npx claude-grammar setup              Interactive setup wizard
-  npx claude-grammar set <field> <val>  Update a single setting
-  npx claude-grammar config             Show current config
-  npx claude-grammar test               Test grammar check with sample input
-  npx claude-grammar login              OAuth login for current provider
-  npx claude-grammar providers          List available providers
-  npx claude-grammar models             List models for current provider
+  npx cc-grammar install                Install hooks into Claude Code
+  npx cc-grammar uninstall              Remove hooks from Claude Code
+  npx cc-grammar setup                  Interactive setup wizard
+  npx cc-grammar set <field> <val>      Update a single setting
+  npx cc-grammar config                 Show current config
+  npx cc-grammar test                   Test grammar check with sample input
+  npx cc-grammar login                  OAuth login for current provider
+  npx cc-grammar providers              List available providers
+  npx cc-grammar models                 List models for current provider
 
 Fields for 'set': provider, model, baseUrl, apiKey, apiKeyEnv, minLength`);
 }
@@ -326,6 +430,12 @@ async function oauthLogin() {
 const [command, ...args] = process.argv.slice(2);
 
 switch (command) {
+  case 'install':
+    await installHooks();
+    break;
+  case 'uninstall':
+    await uninstallHooks();
+    break;
   case undefined:
   case 'setup':
     await fullSetup();
