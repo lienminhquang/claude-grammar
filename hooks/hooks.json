@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/grammar-check.sh",
+            "command": "node ${CLAUDE_PLUGIN_ROOT}/scripts/grammar-check.mjs",
             "timeout": 15000
           }
         ]

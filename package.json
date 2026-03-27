@@ -1,0 +1,12 @@
+{
+  "name": "claude-grammar",
+  "version": "1.0.0",
+  "description": "Automatic grammar checking for Claude Code — supports any LLM provider via pi-ai",
+  "type": "module",
+  "bin": {
+    "claude-grammar": "./scripts/setup.mjs"
+  },
+  "dependencies": {
+    "@mariozechner/pi-ai": "^0.60.0"
+  }
+}
