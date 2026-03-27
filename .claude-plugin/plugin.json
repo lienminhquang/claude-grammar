@@ -1,0 +1,6 @@
+{
+  "name": "claude-grammar",
+  "version": "1.0.0",
+  "description": "Automatic grammar checking for Claude Code — shows errors in the status line without polluting conversation context",
+  "hooks": "./hooks/hooks.json"
+}
