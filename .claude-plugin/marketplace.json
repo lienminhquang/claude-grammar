@@ -1,0 +1,15 @@
+{
+  "name": "cc-grammar",
+  "owner": {
+    "name": "lienminhquang"
+  },
+  "plugins": [
+    {
+      "name": "cc-grammar",
+      "source": ".",
+      "description": "Automatic grammar checking for Claude Code — supports any LLM provider",
+      "version": "0.1.0",
+      "license": "MIT"
+    }
+  ]
+}
