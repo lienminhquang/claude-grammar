@@ -378,9 +378,61 @@ async function uninstallHooks() {
   console.log('\nUninstalled successfully.');
 }
 
+async function updatePackage() {
+  const { execSync } = await import('child_process');
+
+  console.log('Updating cc-grammar to latest version...');
+  try {
+    execSync('npm install -g cc-grammar@latest', { stdio: 'inherit' });
+  } catch {
+    console.error('Failed to update. Try: sudo npm install -g cc-grammar@latest');
+    process.exit(1);
+  }
+
+  // Re-register hooks with potentially new paths
+  const globalRoot = execSync('npm root -g', { encoding: 'utf-8' }).trim();
+  const scriptDir = join(globalRoot, 'cc-grammar', 'scripts');
+
+  if (!existsSync(join(scriptDir, 'grammar-check.mjs'))) {
+    console.error('Error: Could not find grammar-check.mjs at ' + scriptDir);
+    process.exit(1);
+  }
+
+  const settings = loadClaudeSettings();
+
+  if (!settings.hooks) settings.hooks = {};
+  if (!settings.hooks.UserPromptSubmit) settings.hooks.UserPromptSubmit = [];
+
+  settings.hooks.UserPromptSubmit = settings.hooks.UserPromptSubmit.filter(
+    h => !JSON.stringify(h).includes('grammar-check.mjs')
+  );
+
+  settings.hooks.UserPromptSubmit.push({
+    matcher: '',
+    hooks: [{
+      type: 'command',
+      command: `node ${scriptDir}/grammar-check.mjs`,
+      timeout: 15000
+    }]
+  });
+
+  settings.statusLine = {
+    type: 'command',
+    command: `${scriptDir}/grammar-statusline.sh`
+  };
+
+  saveClaudeSettings(settings);
+
+  const pkg = JSON.parse(readFileSync(join(scriptDir, '..', 'package.json'), 'utf-8'));
+  console.log(`\nUpdated to v${pkg.version}`);
+  console.log(`  Hook: node ${scriptDir}/grammar-check.mjs`);
+  console.log(`  Status line: ${scriptDir}/grammar-statusline.sh`);
+}
+
 function showHelp() {
   console.log(`Usage:
   npx cc-grammar install                Install hooks into Claude Code
+  npx cc-grammar update                 Update to latest version
   npx cc-grammar uninstall              Remove hooks from Claude Code
   npx cc-grammar setup                  Interactive setup wizard
   npx cc-grammar set <field> <val>      Update a single setting
@@ -432,6 +484,9 @@ const [command, ...args] = process.argv.slice(2);
 switch (command) {
   case 'install':
     await installHooks();
+    break;
+  case 'update':
+    await updatePackage();
     break;
   case 'uninstall':
     await uninstallHooks();

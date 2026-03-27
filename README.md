@@ -1,4 +1,4 @@
-# claude-grammar
+# cc-grammar
 
 Automatic grammar checking for Claude Code. Catches grammar, spelling, and punctuation errors in your messages and displays them in the status line — without polluting Claude's conversation context.
 
@@ -18,79 +18,86 @@ Supports **any LLM provider** (OpenAI, Anthropic, Google, Groq, Ollama, etc.) vi
 
 ## Installation
 
-### Option 1: Plugin install (recommended)
+```bash
+npx cc-grammar install
+```
+
+This installs `cc-grammar` globally and registers the grammar-check hook + status line in `~/.claude/settings.json`.
+
+Then configure your provider and model:
 
 ```bash
-claude plugin install claude-grammar@<marketplace>
+npx cc-grammar setup
 ```
 
-### Option 2: Local plugin
+Or set fields individually:
 
 ```bash
-git clone https://github.com/your-username/claude-grammar.git
-cd claude-grammar
-npm install
-claude --plugin-dir /path/to/claude-grammar
+npx cc-grammar set provider anthropic
+npx cc-grammar set model claude-haiku-4-5-20251001
+npx cc-grammar set apiKeyEnv ANTHROPIC_API_KEY
 ```
 
-### Status line setup
-
-Plugins can't auto-register a status line. To see grammar errors in the bottom bar, add this to your `~/.claude/settings.json`:
-
-```json
-{
-  "statusLine": {
-    "type": "command",
-    "command": "/path/to/claude-grammar/scripts/grammar-statusline.sh"
-  }
-}
-```
-
-Replace `/path/to/claude-grammar` with the actual path where you cloned the repo.
-
-## Configuration
-
-Edit `grammar.config.json` in the plugin directory to choose your LLM provider and model:
-
-```json
-{
-  "provider": "anthropic",
-  "model": "claude-haiku-4-5-20251001",
-  "minLength": 10
-}
-```
-
-### Optional fields
-
-| Field | Description |
-|-------|-------------|
-| `baseUrl` | Custom API endpoint (e.g. `"https://my-proxy.example.com"`) |
-| `apiKey` | API key value (not recommended — use `apiKeyEnv` instead) |
-| `apiKeyEnv` | Name of env var containing the API key (e.g. `"MY_API_KEY"`) |
-
-Example with custom endpoint:
-
-```json
-{
-  "provider": "anthropic",
-  "model": "claude-haiku-4-5-20251001",
-  "baseUrl": "https://my-proxy.example.com",
-  "apiKeyEnv": "MY_ANTHROPIC_KEY"
-}
-```
-
-### Using Claude Pro/Max subscription (OAuth)
-
-If you have a Claude Pro or Max subscription, you can use it instead of an API key:
+Verify it works:
 
 ```bash
-cd /path/to/claude-grammar
-npx @mariozechner/pi-ai login anthropic
+npx cc-grammar test
 ```
 
-This opens your browser for OAuth login and saves credentials to `auth.json`. The grammar checker will automatically use and refresh these tokens.
+## Update
 
-### Supported providers
+```bash
+npx cc-grammar update
+```
+
+## Uninstall
+
+```bash
+npx cc-grammar uninstall
+```
+
+Removes hooks from `~/.claude/settings.json` and uninstalls the global package. Config in `~/.config/claude-grammar/` is preserved.
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `npx cc-grammar install` | Install hooks into Claude Code |
+| `npx cc-grammar update` | Update to latest version |
+| `npx cc-grammar uninstall` | Remove hooks from Claude Code |
+| `npx cc-grammar setup` | Interactive setup wizard |
+| `npx cc-grammar set <field> <val>` | Update a single setting |
+| `npx cc-grammar config` | Show current config |
+| `npx cc-grammar test` | Test grammar check with sample input |
+| `npx cc-grammar login` | OAuth login for current provider |
+| `npx cc-grammar providers` | List available providers |
+| `npx cc-grammar models` | List models for current provider |
+
+Settings fields: `provider`, `model`, `baseUrl`, `apiKey`, `apiKeyEnv`, `minLength`
+
+## Authentication
+
+### API key (environment variable)
+
+```bash
+npx cc-grammar set apiKeyEnv ANTHROPIC_API_KEY
+```
+
+### API key (direct)
+
+```bash
+npx cc-grammar set apiKey sk-...
+```
+
+### Claude Pro/Max subscription (OAuth)
+
+```bash
+npx cc-grammar login
+```
+
+Opens your browser for OAuth login. Tokens are saved and auto-refreshed.
+
+## Supported providers
 
 | Provider | Model examples | API key env var |
 |----------|---------------|-----------------|
@@ -106,7 +113,7 @@ For local models (Ollama, vLLM, LM Studio), see [pi-ai docs](https://github.com/
 
 ## Usage
 
-Just type normally. Grammar errors appear automatically in the status line:
+Just type normally in Claude Code. Grammar errors appear automatically in the status line:
 
 ```
 [Grammar] "I has" -> "I have" (subject-verb agreement)

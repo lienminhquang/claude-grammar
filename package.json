@@ -1,6 +1,6 @@
 {
   "name": "cc-grammar",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "description": "Automatic grammar checking for Claude Code — supports any LLM provider via pi-ai",
   "type": "module",
   "bin": {
