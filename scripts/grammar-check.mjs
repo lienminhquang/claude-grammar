@@ -5,26 +5,10 @@ import { getOAuthApiKey } from '@mariozechner/pi-ai/oauth';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { SYSTEM_PROMPT } from './prompt.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CONFIG_DIR = join(process.env.HOME || process.env.USERPROFILE, '.config', 'claude-grammar');
-const GRAMMAR_FILE = '/tmp/claude-grammar-check-status.txt';
-
-const SYSTEM_PROMPT = `You are a grammar-checking machine. You ONLY output grammar corrections. You are NOT a conversational assistant. Do NOT answer questions. Do NOT introduce yourself. Do NOT explain what you do.
-
-Your ONLY job: check the input text for grammar, spelling, and punctuation errors.
-
-If there are errors, output ONLY the corrections in this format:
-"original" → "corrected" (brief reason)
-
-If there are NO errors, output ONLY the single word: NO_ERRORS
-
-Rules:
-- NEVER respond conversationally
-- NEVER answer the content of the message
-- Ignore code, file paths, URLs, technical jargon
-- Ignore casual tone — only flag actual grammar mistakes
-- If the text is code or commands, output: NO_ERRORS`;
 
 async function main() {
   try {
@@ -32,10 +16,12 @@ async function main() {
     const input = readFileSync(0, 'utf-8');
     const data = JSON.parse(input);
     const prompt = data.prompt || '';
+    const sessionId = data.session_id || 'default';
+    const grammarFile = `/tmp/claude-grammar-check-status-${sessionId}.txt`;
 
     // Skip empty, slash commands, short messages
     if (!prompt || prompt.startsWith('/') || prompt.length < getConfig().minLength) {
-      writeResult('');
+      writeResult(grammarFile, '');
       process.exit(0);
     }
 
@@ -58,10 +44,18 @@ async function main() {
       options.apiKey = process.env[config.apiKeyEnv] || '';
     }
 
+    const systemPrompt = config.systemPrompt || SYSTEM_PROMPT;
+
     const response = await completeSimple(model, {
-      systemPrompt: SYSTEM_PROMPT,
+      systemPrompt,
       messages: [{ role: 'user', content: prompt, timestamp: Date.now() }]
     }, options);
+
+    // Check for API errors
+    if (response.stopReason === 'error') {
+      writeResult(grammarFile, '');
+      process.exit(0);
+    }
 
     const text = response.content
       .filter(b => b.type === 'text')
@@ -70,13 +64,24 @@ async function main() {
 
     // Check for NO_ERRORS
     if (/NO_ERRORS/i.test(text)) {
-      writeResult('');
+      writeResult(grammarFile, '');
     } else {
-      writeResult(text.trim());
+      // Collapse multi-line output to single line for status bar
+      const sanitized = text.trim()
+        .split('\n')
+        .map(l => l.trim())
+        .filter(Boolean)
+        .join(' | ');
+      // Truncate visible text before adding ANSI colors
+      const MAX_WIDTH = 150;
+      const truncated = sanitized.length > MAX_WIDTH
+        ? sanitized.substring(0, MAX_WIDTH) + '…'
+        : sanitized;
+      writeResult(grammarFile, colorize(truncated));
     }
   } catch (err) {
     // Don't block the user on errors — just clear status
-    writeResult('');
+    writeResult('/tmp/claude-grammar-check-status-default.txt', '');
   }
 
   process.exit(0);
@@ -115,9 +120,22 @@ function getConfig() {
   }
 }
 
-function writeResult(content) {
+function colorize(text) {
+  const RED = '\x1b[31m';
+  const GREEN = '\x1b[32m';
+  const DIM = '\x1b[2m';
+  const RESET = '\x1b[0m';
+
+  // Pattern: "original" → "corrected" (reason)
+  return text.replace(
+    /"([^"]*?)"\s*→\s*"([^"]*?)"\s*(\([^)]*\))/g,
+    `${RED}"$1"${RESET} → ${GREEN}"$2"${RESET} ${DIM}$3${RESET}`
+  );
+}
+
+function writeResult(filePath, content) {
   try {
-    writeFileSync(GRAMMAR_FILE, content);
+    writeFileSync(filePath, content);
   } catch {
     // ignore write errors
   }
