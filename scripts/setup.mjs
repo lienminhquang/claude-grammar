@@ -5,6 +5,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, chmod
 import { createInterface } from 'readline';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { SYSTEM_PROMPT } from './prompt.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CONFIG_DIR = join(process.env.HOME || process.env.USERPROFILE, '.config', 'claude-grammar');
@@ -198,9 +199,16 @@ async function setField(field, value) {
     case 'minLength':
       config.minLength = parseInt(value, 10);
       break;
+    case 'systemPrompt':
+      if (value === '' || value === 'none' || value === 'default') {
+        delete config.systemPrompt;
+      } else {
+        config.systemPrompt = value;
+      }
+      break;
     default:
       console.error(`Unknown field "${field}".`);
-      console.error('Available: provider, model, baseUrl, apiKey, apiKeyEnv, minLength');
+      console.error('Available: provider, model, baseUrl, apiKey, apiKeyEnv, minLength, systemPrompt');
       process.exit(1);
   }
 
@@ -258,8 +266,10 @@ async function testGrammarCheck() {
   }
 
   try {
+    const systemPrompt = config.systemPrompt || SYSTEM_PROMPT;
+
     const response = await completeSimple(model, {
-      systemPrompt: 'You are a grammar checker. Output corrections in format: "original" → "corrected" (reason). If no errors, output NO_ERRORS.',
+      systemPrompt,
       messages: [{ role: 'user', content: testInput, timestamp: Date.now() }]
     }, options);
 
@@ -442,7 +452,8 @@ function showHelp() {
   npx cc-grammar providers              List available providers
   npx cc-grammar models                 List models for current provider
 
-Fields for 'set': provider, model, baseUrl, apiKey, apiKeyEnv, minLength`);
+Fields for 'set': provider, model, baseUrl, apiKey, apiKeyEnv, minLength, systemPrompt
+  Use 'set systemPrompt default' to reset to built-in prompt`);
 }
 
 function showConfig() {
