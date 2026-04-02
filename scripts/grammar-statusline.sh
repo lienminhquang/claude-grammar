@@ -1,13 +1,21 @@
 #!/bin/bash
 
-# Read stdin (Claude Code sends session JSON, but we don't need it)
-cat > /dev/null
+# Read stdin — Claude Code sends session JSON with session_id
+input=$(cat)
 
-GRAMMAR_FILE="/tmp/claude-grammar-check-status.txt"
+# Extract session_id from JSON
+SESSION_ID=$(echo "$input" | grep -o '"session_id":"[^"]*"' | cut -d'"' -f4)
+SESSION_ID=${SESSION_ID:-default}
 
-if [ -f "$GRAMMAR_FILE" ]; then
-  CONTENT=$(cat "$GRAMMAR_FILE")
-  if [ -n "$CONTENT" ]; then
-    echo -e "\033[33m[Grammar]\033[0m $CONTENT"
-  fi
+GRAMMAR_FILE="/tmp/claude-grammar-check-status-${SESSION_ID}.txt"
+
+if [ ! -f "$GRAMMAR_FILE" ]; then
+  exit 0
 fi
+
+CONTENT=$(cat "$GRAMMAR_FILE")
+if [ -z "$CONTENT" ]; then
+  exit 0
+fi
+
+echo -e "✏️  $CONTENT"
