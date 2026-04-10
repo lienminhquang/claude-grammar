@@ -4,7 +4,7 @@ Automatic grammar checking for coding agents. Catches grammar, spelling, and pun
 
 Supports **Claude Code**, **Pi Coding Agent**, **Codex CLI**, and **Gemini CLI**.
 
-Uses **any LLM provider** (OpenAI, Anthropic, Google, Groq, Ollama, etc.) via [pi-ai](https://github.com/badlogic/pi-mono/tree/main/packages/ai).
+Uses **`claude -p`** (Claude Code pipe mode) — no API keys needed. Piggybacks on your existing Claude Code authentication.
 
 ## How it works
 
@@ -16,7 +16,8 @@ Uses **any LLM provider** (OpenAI, Anthropic, Google, Groq, Ollama, etc.) via [p
 ## Prerequisites
 
 - Node.js >= 20
-- One of: [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Pi](https://github.com/badlogic/pi-mono), [Codex CLI](https://github.com/openai/codex), or [Gemini CLI](https://github.com/google-gemini/gemini-cli)
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
+- One of: Claude Code, [Pi](https://github.com/badlogic/pi-mono), [Codex CLI](https://github.com/openai/codex), or [Gemini CLI](https://github.com/google-gemini/gemini-cli)
 
 ## Installation
 
@@ -32,12 +33,6 @@ npx cc-grammar install
 pi install npm:cc-grammar
 ```
 
-Or test without installing:
-
-```bash
-pi -e npm:cc-grammar
-```
-
 ### Codex CLI
 
 ```bash
@@ -50,18 +45,12 @@ npx cc-grammar install --agent codex
 npx cc-grammar install --agent gemini
 ```
 
-### Then configure your provider/model
+### Configure model (optional)
+
+Default model is `haiku` (fast and cheap). To change:
 
 ```bash
-npx cc-grammar setup
-```
-
-Or set fields individually:
-
-```bash
-npx cc-grammar set provider anthropic
-npx cc-grammar set model claude-haiku-4-5-20251001
-npx cc-grammar set apiKeyEnv ANTHROPIC_API_KEY
+npx cc-grammar set model sonnet
 ```
 
 Verify it works:
@@ -92,51 +81,25 @@ npx cc-grammar update
 | `npx cc-grammar install [--agent <name>]` | Install for a coding agent |
 | `npx cc-grammar uninstall [--agent <name>]` | Remove from a coding agent |
 | `npx cc-grammar update` | Update to latest version |
-| `npx cc-grammar setup` | Interactive setup wizard |
+| `npx cc-grammar setup` | Interactive model setup |
 | `npx cc-grammar set <field> <val>` | Update a single setting |
 | `npx cc-grammar config` | Show current config |
 | `npx cc-grammar test` | Test grammar check with sample input |
-| `npx cc-grammar login` | OAuth login for current provider |
-| `npx cc-grammar providers` | List available providers |
-| `npx cc-grammar models` | List models for current provider |
+| `npx cc-grammar models` | List available model aliases |
 
 Supported agents: `claude` (default), `pi`, `codex`, `gemini`
 
-Settings fields: `provider`, `model`, `baseUrl`, `apiKey`, `apiKeyEnv`, `minLength`, `systemPrompt`
+Settings fields: `model`, `minLength`, `systemPrompt`
 
-## Authentication
+## Model aliases
 
-### API key (environment variable)
+| Alias | Description |
+|-------|-------------|
+| `haiku` | Default — fast and cheap |
+| `sonnet` | Balanced |
+| `opus` | Most capable |
 
-```bash
-npx cc-grammar set apiKeyEnv ANTHROPIC_API_KEY
-```
-
-### API key (direct)
-
-```bash
-npx cc-grammar set apiKey sk-...
-```
-
-### OAuth (Claude Pro/Max subscription)
-
-```bash
-npx cc-grammar login
-```
-
-## Supported providers
-
-| Provider | Model examples | API key env var |
-|----------|---------------|-----------------|
-| `anthropic` | `claude-haiku-4-5-20251001`, `claude-sonnet-4-20250514` | `ANTHROPIC_API_KEY` |
-| `openai` | `gpt-4o-mini`, `gpt-4o` | `OPENAI_API_KEY` |
-| `google` | `gemini-2.0-flash` | `GEMINI_API_KEY` |
-| `groq` | `llama-3.1-8b-instant` | `GROQ_API_KEY` |
-| `mistral` | `mistral-small-latest` | `MISTRAL_API_KEY` |
-| `xai` | `grok-2` | `XAI_API_KEY` |
-| `openrouter` | Any model on OpenRouter | `OPENROUTER_API_KEY` |
-
-For local models (Ollama, vLLM, LM Studio), see [pi-ai docs](https://github.com/badlogic/pi-mono/tree/main/packages/ai).
+Or use a full model ID (e.g. `claude-haiku-4-5-20251001`).
 
 ## Usage
 
@@ -151,7 +114,7 @@ Messages shorter than 10 characters and slash commands are skipped.
 ## Architecture
 
 ```
-lib/grammar-engine.mjs          ← Agent-agnostic core
+lib/grammar-engine.mjs          ← Agent-agnostic core (uses claude -p)
   ├── adapters/claude-code/     ← Shell hook + status line
   ├── adapters/pi/              ← TypeScript extension (in-process)
   ├── adapters/codex/           ← Shell hook
