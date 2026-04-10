@@ -1,7 +1,7 @@
 {
   "name": "cc-grammar",
-  "version": "0.3.1",
-  "description": "Automatic grammar checking for Claude Code — supports any LLM provider via pi-ai",
+  "version": "0.5.0",
+  "description": "Grammar checking for coding agents — Claude Code, Pi, Codex CLI, Gemini CLI",
   "type": "module",
   "bin": {
     "cc-grammar": "./scripts/setup.mjs"
@@ -14,9 +14,38 @@
   "bugs": {
     "url": "https://github.com/lienminhquang/claude-grammar/issues"
   },
-  "keywords": ["claude", "claude-code", "grammar", "spelling", "hook", "statusline"],
+  "keywords": [
+    "claude",
+    "claude-code",
+    "grammar",
+    "spelling",
+    "hook",
+    "statusline",
+    "pi-package",
+    "pi-extension",
+    "codex",
+    "gemini-cli",
+    "coding-agent"
+  ],
   "license": "MIT",
-  "dependencies": {
-    "@mariozechner/pi-ai": "^0.60.0"
+  "files": [
+    "lib/",
+    "adapters/",
+    "scripts/",
+    "hooks/",
+    ".claude-plugin/"
+  ],
+  "pi": {
+    "extensions": [
+      "./adapters/pi"
+    ]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*"
+  },
+  "peerDependenciesMeta": {
+    "@mariozechner/pi-coding-agent": {
+      "optional": true
+    }
   }
 }

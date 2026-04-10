@@ -1,30 +1,56 @@
 # cc-grammar
 
-Automatic grammar checking for Claude Code. Catches grammar, spelling, and punctuation errors in your messages and displays them in the status line — without polluting Claude's conversation context.
+Automatic grammar checking for coding agents. Catches grammar, spelling, and punctuation errors in your messages and displays them in the status line — without polluting the conversation context.
 
-Supports **any LLM provider** (OpenAI, Anthropic, Google, Groq, Ollama, etc.) via [pi-ai](https://github.com/badlogic/pi-mono/tree/main/packages/ai).
+Supports **Claude Code**, **Pi Coding Agent**, **Codex CLI**, and **Gemini CLI**.
+
+Uses **any LLM provider** (OpenAI, Anthropic, Google, Groq, Ollama, etc.) via [pi-ai](https://github.com/badlogic/pi-mono/tree/main/packages/ai).
 
 ## How it works
 
 1. You type a message and hit enter
-2. A `UserPromptSubmit` hook sends your message to your configured LLM for grammar analysis
+2. Your message is sent to a fast LLM for grammar analysis (in the background)
 3. Errors (if any) are displayed in the status line at the bottom of your terminal
-4. Claude's conversation stays clean — no context injection
+4. The agent's conversation stays clean — no context injection
 
 ## Prerequisites
 
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI installed
 - Node.js >= 20
+- One of: [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Pi](https://github.com/badlogic/pi-mono), [Codex CLI](https://github.com/openai/codex), or [Gemini CLI](https://github.com/google-gemini/gemini-cli)
 
 ## Installation
+
+### Claude Code (default)
 
 ```bash
 npx cc-grammar install
 ```
 
-This installs `cc-grammar` globally and registers the grammar-check hook + status line in `~/.claude/settings.json`.
+### Pi Coding Agent
 
-Then configure your provider and model:
+```bash
+pi install npm:cc-grammar
+```
+
+Or test without installing:
+
+```bash
+pi -e npm:cc-grammar
+```
+
+### Codex CLI
+
+```bash
+npx cc-grammar install --agent codex
+```
+
+### Gemini CLI
+
+```bash
+npx cc-grammar install --agent gemini
+```
+
+### Then configure your provider/model
 
 ```bash
 npx cc-grammar setup
@@ -44,27 +70,28 @@ Verify it works:
 npx cc-grammar test
 ```
 
+## Uninstall
+
+```bash
+npx cc-grammar uninstall                    # Claude Code (default)
+npx cc-grammar uninstall --agent codex      # Codex CLI
+npx cc-grammar uninstall --agent gemini     # Gemini CLI
+pi remove npm:cc-grammar                    # Pi
+```
+
 ## Update
 
 ```bash
 npx cc-grammar update
 ```
 
-## Uninstall
-
-```bash
-npx cc-grammar uninstall
-```
-
-Removes hooks from `~/.claude/settings.json` and uninstalls the global package. Config in `~/.config/claude-grammar/` is preserved.
-
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `npx cc-grammar install` | Install hooks into Claude Code |
+| `npx cc-grammar install [--agent <name>]` | Install for a coding agent |
+| `npx cc-grammar uninstall [--agent <name>]` | Remove from a coding agent |
 | `npx cc-grammar update` | Update to latest version |
-| `npx cc-grammar uninstall` | Remove hooks from Claude Code |
 | `npx cc-grammar setup` | Interactive setup wizard |
 | `npx cc-grammar set <field> <val>` | Update a single setting |
 | `npx cc-grammar config` | Show current config |
@@ -73,7 +100,9 @@ Removes hooks from `~/.claude/settings.json` and uninstalls the global package. 
 | `npx cc-grammar providers` | List available providers |
 | `npx cc-grammar models` | List models for current provider |
 
-Settings fields: `provider`, `model`, `baseUrl`, `apiKey`, `apiKeyEnv`, `minLength`
+Supported agents: `claude` (default), `pi`, `codex`, `gemini`
+
+Settings fields: `provider`, `model`, `baseUrl`, `apiKey`, `apiKeyEnv`, `minLength`, `systemPrompt`
 
 ## Authentication
 
@@ -89,13 +118,11 @@ npx cc-grammar set apiKeyEnv ANTHROPIC_API_KEY
 npx cc-grammar set apiKey sk-...
 ```
 
-### Claude Pro/Max subscription (OAuth)
+### OAuth (Claude Pro/Max subscription)
 
 ```bash
 npx cc-grammar login
 ```
-
-Opens your browser for OAuth login. Tokens are saved and auto-refreshed.
 
 ## Supported providers
 
@@ -113,14 +140,25 @@ For local models (Ollama, vLLM, LM Studio), see [pi-ai docs](https://github.com/
 
 ## Usage
 
-Just type normally in Claude Code. Grammar errors appear automatically in the status line:
+Just type normally in your coding agent. Grammar errors appear automatically in the status line:
 
 ```
-[Grammar] "I has" -> "I have" (subject-verb agreement)
-          "thinked" -> "thought" (irregular past tense)
+✏️  "I has" → "I have" (subject-verb) | "thinked" → "thought" (irregular past)
 ```
 
 Messages shorter than 10 characters and slash commands are skipped.
+
+## Architecture
+
+```
+lib/grammar-engine.mjs          ← Agent-agnostic core
+  ├── adapters/claude-code/     ← Shell hook + status line
+  ├── adapters/pi/              ← TypeScript extension (in-process)
+  ├── adapters/codex/           ← Shell hook
+  └── adapters/gemini/          ← Shell hook
+```
+
+All adapters share the same grammar engine and config (`~/.config/claude-grammar/grammar.config.json`).
 
 ## License
 

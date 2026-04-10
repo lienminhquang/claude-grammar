@@ -4,36 +4,58 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-cc-grammar is a grammar checking tool for Claude Code. It runs as a UserPromptSubmit hook, checking user messages for grammar/spelling errors via an LLM, and displays corrections in the status line — never polluting conversation context.
+cc-grammar is a grammar checking tool for coding agents (Claude Code, Pi, Codex CLI, Gemini CLI). It intercepts user messages, checks for grammar/spelling errors via an LLM, and displays corrections in the status line — never polluting conversation context.
 
 ## Commands
 
 ```bash
-npx cc-grammar install     # Install globally + register hooks in ~/.claude/settings.json
-npx cc-grammar setup       # Interactive provider/model config wizard
-npx cc-grammar test        # Test grammar check with sample input
-npx cc-grammar config      # Show current configuration
-npx cc-grammar uninstall   # Remove hooks + global package
+npx cc-grammar install [--agent <name>]   # Install for a coding agent (default: claude)
+npx cc-grammar setup                      # Interactive provider/model config wizard
+npx cc-grammar test                       # Test grammar check with sample input
+npx cc-grammar config                     # Show current configuration
+npx cc-grammar uninstall [--agent <name>] # Remove hooks (default: claude)
+pi install npm:cc-grammar                 # Install as pi package
 ```
 
 No automated test suite, linter, or formatter is configured.
 
 ## Architecture
 
-Three scripts handle all functionality:
+### Core engine
 
-- **`scripts/grammar-check.mjs`** — Grammar checking engine. Receives JSON on stdin (with `prompt` field) from the Claude Code hook system, calls an LLM, and writes corrections to `/tmp/claude-grammar-check-status.txt`. Skips empty input, slash commands, and messages shorter than `minLength`.
+- **`lib/grammar-engine.mjs`** — Agent-agnostic grammar checking engine. Exports `checkGrammar(text, config)`, `loadConfig()`, `resolveApiKey()`, `shouldSkip()`, `truncateCorrections()`, `colorizeAnsi()`. No stdin, no file I/O, no UI — pure logic.
 
-- **`scripts/setup.mjs`** — CLI entry point (`cc-grammar` bin). Handles install/uninstall/update (modifies `~/.claude/settings.json`), interactive setup, config management, OAuth login, and provider/model listing.
+- **`lib/prompt.mjs`** — System prompt for the grammar-checking LLM.
 
-- **`scripts/grammar-statusline.sh`** — Bash script that reads `/tmp/claude-grammar-check-status.txt` and formats output with ANSI yellow for the status line display.
+### Adapters (one per coding agent)
+
+- **`adapters/claude-code/hook.mjs`** — Claude Code UserPromptSubmit hook. Reads stdin JSON, calls engine, writes to temp file.
+- **`adapters/claude-code/statusline.sh`** — Claude Code status line reader.
+- **`adapters/pi/index.ts`** — Pi extension. Uses `input` event + `ctx.ui.setStatus()`.
+- **`adapters/codex/hook.mjs`** — Codex CLI UserPromptSubmit hook (same pattern as Claude Code).
+- **`adapters/gemini/hook.mjs`** — Gemini CLI UserPromptSubmit hook (same pattern as Claude Code).
+
+### CLI & backward compat
+
+- **`scripts/setup.mjs`** — CLI entry point (`cc-grammar` bin). Multi-agent install/uninstall with `--agent` flag.
+- **`scripts/grammar-check.mjs`** — Backward-compatible entry for existing Claude Code installations.
+- **`scripts/grammar-statusline.sh`** — Backward-compatible status line for existing installations.
+- **`scripts/prompt.mjs`** — Re-exports from `lib/prompt.mjs`.
 
 ### Data flow
 
+Shell-command agents (Claude Code, Codex, Gemini):
 ```
-User sends message → UserPromptSubmit hook triggers grammar-check.mjs
-  → LLM returns corrections → written to /tmp/claude-grammar-check-status.txt
-  → statusLine hook runs grammar-statusline.sh → reads file → displays in status bar
+User sends message → UserPromptSubmit hook → adapter/hook.mjs
+  → lib/grammar-engine.mjs → LLM → corrections → temp file
+  → statusLine hook → statusline.sh → reads file → displays
+```
+
+TypeScript-plugin agents (Pi):
+```
+User sends message → input event → adapters/pi/index.ts
+  → lib/grammar-engine.mjs → LLM → corrections
+  → ctx.ui.setStatus() → displays in footer
 ```
 
 ### Configuration
@@ -41,15 +63,18 @@ User sends message → UserPromptSubmit hook triggers grammar-check.mjs
 - Config file: `~/.config/claude-grammar/grammar.config.json`
 - OAuth tokens: `~/.config/claude-grammar/auth.json`
 - Key fields: `provider`, `model`, `baseUrl`, `apiKey`, `apiKeyEnv`, `minLength`
-- Auth priority: OAuth > apiKey > apiKeyEnv > pi-ai default
 
 ### Dependencies
 
-Single dependency: `@mariozechner/pi-ai` — abstracts multi-provider LLM access (Anthropic, OpenAI, Google, Groq, Mistral, XAI, OpenRouter, local models).
+- `@mariozechner/pi-ai` — Multi-provider LLM access (dependency for standalone use)
+- `@mariozechner/pi-coding-agent` — Pi extension types (peer dependency, optional)
 
 ### Key design decisions
 
-- ES modules (`.mjs`), Node.js >= 20
-- 15-second hook timeout; errors fail silently to never block user input
-- Uses `/tmp/` file as IPC between hook and status line
-- Hook registration modifies the user's `~/.claude/settings.json` directly
+- ES modules (`.mjs`/`.ts`), Node.js >= 20
+- Agent-agnostic core in `lib/`, thin adapters in `adapters/`
+- Shell-command adapters share identical stdin-JSON protocol
+- Pi adapter uses in-process event API (no temp files)
+- 15-second timeout for shell hooks; pi adapter is async fire-and-forget
+- Errors fail silently to never block user input
+- Shared config across all agents

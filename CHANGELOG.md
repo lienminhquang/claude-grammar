@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.5.0
+
+### Breaking Changes
+
+- **Switched to `claude -p`** — Grammar checking now uses Claude Code pipe mode as the LLM backend. No API keys needed — piggybacks on Claude Code's existing auth (subscription).
+- **Removed `@mariozechner/pi-ai`** — The pi-ai dependency has been removed entirely. All provider/auth/OAuth config fields are gone.
+- **Simplified config** — Only `model`, `minLength`, and `systemPrompt` fields remain. Default model is `haiku`.
+
+### Features
+
+- **Multi-agent support** — Now supports Claude Code, Pi Coding Agent, Codex CLI, and Gemini CLI.
+- **Agent-agnostic engine** — Core grammar logic extracted to `lib/grammar-engine.mjs`. Adding a new agent requires only a thin adapter.
+- **`--agent` flag** — `npx cc-grammar install --agent codex|gemini|pi|claude` to target a specific agent.
+- **Recursion guard** — Hook adapters detect and skip recursive `claude -p` invocations via `CC_GRAMMAR_RUNNING` env var.
+
+### Architecture
+
+- Extracted shared engine from `scripts/grammar-check.mjs` to `lib/grammar-engine.mjs`.
+- Created `adapters/` directory with per-agent adapters.
+- Moved prompt to `lib/prompt.mjs` with re-export at `scripts/prompt.mjs`.
+- Original `scripts/grammar-check.mjs` and `scripts/grammar-statusline.sh` preserved for backward compatibility.
+
 ## 0.3.0
 
 ### Features

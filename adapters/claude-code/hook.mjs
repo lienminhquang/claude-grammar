@@ -1,14 +1,12 @@
 #!/usr/bin/env node
 
 /**
- * Backward-compatible entry point for existing Claude Code installations.
- * Delegates to the Claude Code adapter.
- *
- * New installations use adapters/claude-code/hook.mjs directly.
+ * Claude Code adapter — UserPromptSubmit hook.
+ * Reads JSON from stdin, runs grammar check, writes result to temp file.
  */
 
 import { readFileSync, writeFileSync } from 'fs';
-import { checkGrammar, loadConfig, shouldSkip, truncateCorrections, colorizeAnsi } from '../lib/grammar-engine.mjs';
+import { checkGrammar, loadConfig, shouldSkip, truncateCorrections, colorizeAnsi } from '../../lib/grammar-engine.mjs';
 
 async function main() {
   if (process.env.CC_GRAMMAR_RUNNING) process.exit(0);
@@ -18,8 +16,7 @@ async function main() {
     const data = JSON.parse(input);
     const prompt = data.prompt || '';
     const sessionId = data.session_id || 'default';
-    // Keep old temp file name for backward compat with existing statusline.sh
-    const grammarFile = `/tmp/claude-grammar-check-status-${sessionId}.txt`;
+    const grammarFile = `/tmp/cc-grammar-status-${sessionId}.txt`;
 
     const config = loadConfig();
 
@@ -37,7 +34,7 @@ async function main() {
       writeResult(grammarFile, colorizeAnsi(truncated));
     }
   } catch (err) {
-    writeResult('/tmp/claude-grammar-check-status-default.txt', '');
+    writeResult('/tmp/cc-grammar-status-default.txt', '');
   }
 
   process.exit(0);

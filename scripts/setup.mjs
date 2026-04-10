@@ -1,18 +1,29 @@
 #!/usr/bin/env node
 
-import { getProviders, getModels, getModel } from '@mariozechner/pi-ai';
-import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, chmodSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { createInterface } from 'readline';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+
 import { SYSTEM_PROMPT } from './prompt.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const PACKAGE_ROOT = join(__dirname, '..');
 const CONFIG_DIR = join(process.env.HOME || process.env.USERPROFILE, '.config', 'claude-grammar');
 const CONFIG_PATH = join(CONFIG_DIR, 'grammar.config.json');
 
+// Supported agents and their config
+const AGENTS = {
+  claude: { name: 'Claude Code' },
+  codex: { name: 'Codex CLI' },
+  gemini: { name: 'Gemini CLI' },
+  pi: { name: 'Pi Coding Agent' },
+};
+
+// ─── Config helpers ──────────────────────────────────────────────────────────
+
 function loadConfig() {
-  const defaults = { provider: 'anthropic', model: 'claude-haiku-4-5-20251001', minLength: 10 };
+  const defaults = { model: 'haiku', minLength: 10 };
   try {
     if (existsSync(CONFIG_PATH)) {
       return { ...defaults, ...JSON.parse(readFileSync(CONFIG_PATH, 'utf-8')) };
@@ -33,123 +44,19 @@ function createPrompt() {
   return { ask, close };
 }
 
-async function selectProvider({ ask }) {
-  const providers = getProviders();
-  console.log('\nAvailable providers:\n');
-  providers.forEach((p, i) => console.log(`  ${i + 1}. ${p}`));
-  console.log();
-
-  const input = await ask(`Select provider (1-${providers.length}): `);
-  const index = parseInt(input, 10) - 1;
-  if (index < 0 || index >= providers.length) {
-    console.error('Invalid selection.');
-    return null;
-  }
-  return providers[index];
-}
-
-async function selectModel({ ask }, provider) {
-  const models = getModels(provider);
-  if (!models.length) {
-    console.error(`No models found for provider "${provider}".`);
-    return null;
-  }
-
-  console.log(`\nAvailable models for ${provider}:\n`);
-  models.forEach((m, i) => console.log(`  ${i + 1}. ${m.id}`));
-  console.log();
-
-  const input = await ask(`Select model (1-${models.length}): `);
-  const index = parseInt(input, 10) - 1;
-  if (index < 0 || index >= models.length) {
-    console.error('Invalid selection.');
-    return null;
-  }
-  return models[index].id;
-}
-
-async function setupAuth({ ask }, config) {
-  console.log('\nAuthentication method:\n');
-  console.log('  1. Environment variable (e.g. ANTHROPIC_API_KEY)');
-  console.log('  2. OAuth login (Claude Pro/Max subscription)');
-  console.log('  3. Custom API key');
-  console.log('  4. Skip (use pi-ai defaults)');
-  console.log();
-
-  const choice = await ask('Select auth method (1-4): ');
-
-  switch (choice.trim()) {
-    case '1': {
-      const envVar = await ask('Environment variable name: ');
-      if (envVar.trim()) {
-        config.apiKeyEnv = envVar.trim();
-        delete config.apiKey;
-      }
-      break;
-    }
-    case '2': {
-      console.log('\nRunning OAuth login...\n');
-      const { execSync } = await import('child_process');
-      try {
-        execSync('npx @mariozechner/pi-ai login ' + config.provider, {
-          stdio: 'inherit',
-          cwd: CONFIG_DIR
-        });
-        console.log('\nOAuth credentials saved.');
-      } catch {
-        console.error('OAuth login failed.');
-      }
-      delete config.apiKey;
-      delete config.apiKeyEnv;
-      break;
-    }
-    case '3': {
-      const key = await ask('API key: ');
-      if (key.trim()) {
-        config.apiKey = key.trim();
-        delete config.apiKeyEnv;
-      }
-      break;
-    }
-    case '4':
-      delete config.apiKey;
-      delete config.apiKeyEnv;
-      break;
-    default:
-      console.log('Skipping auth setup.');
-  }
-
-  return config;
-}
-
-async function setupBaseUrl({ ask }, config) {
-  const current = config.baseUrl || '(default)';
-  const input = await ask(`\nCustom base URL [${current}]: `);
-  if (input.trim()) {
-    config.baseUrl = input.trim();
-  } else if (input === '' && config.baseUrl) {
-    // keep existing
-  }
-  return config;
-}
+// ─── Setup wizard ────────────────────────────────────────────────────────────
 
 async function fullSetup() {
   const { ask, close } = createPrompt();
-  let config = loadConfig();
+  const config = loadConfig();
 
-  console.log('claude-grammar setup\n');
+  console.log('cc-grammar setup\n');
   console.log('Current config:', JSON.stringify(config, null, 2));
+  console.log('\nUses `claude -p` (Claude Code pipe mode) — no API key needed.\n');
+  console.log('Model aliases: haiku, sonnet, opus (or full model ID)\n');
 
-  const provider = await selectProvider({ ask });
-  if (!provider) { close(); return; }
-  config.provider = provider;
-
-  const model = await selectModel({ ask }, provider);
-  if (!model) { close(); return; }
-  config.model = model;
-
-  config = await setupBaseUrl({ ask }, config);
-  config = await setupAuth({ ask }, config);
+  const input = await ask(`Model [${config.model || 'haiku'}]: `);
+  config.model = input.trim() || config.model || 'haiku';
 
   saveConfig(config);
   console.log('\nConfig saved to grammar.config.json:');
@@ -161,40 +68,8 @@ async function setField(field, value) {
   const config = loadConfig();
 
   switch (field) {
-    case 'provider': {
-      const providers = getProviders();
-      if (!providers.includes(value)) {
-        console.error(`Unknown provider "${value}". Available: ${providers.join(', ')}`);
-        process.exit(1);
-      }
-      config.provider = value;
-      break;
-    }
-    case 'model': {
-      const models = getModels(config.provider);
-      const match = models.find(m => m.id === value);
-      if (!match) {
-        console.error(`Unknown model "${value}" for provider "${config.provider}".`);
-        console.error(`Available: ${models.map(m => m.id).join(', ')}`);
-        process.exit(1);
-      }
+    case 'model':
       config.model = value;
-      break;
-    }
-    case 'baseUrl':
-      if (value === '' || value === 'none') {
-        delete config.baseUrl;
-      } else {
-        config.baseUrl = value;
-      }
-      break;
-    case 'apiKey':
-      config.apiKey = value;
-      delete config.apiKeyEnv;
-      break;
-    case 'apiKeyEnv':
-      config.apiKeyEnv = value;
-      delete config.apiKey;
       break;
     case 'minLength':
       config.minLength = parseInt(value, 10);
@@ -208,7 +83,7 @@ async function setField(field, value) {
       break;
     default:
       console.error(`Unknown field "${field}".`);
-      console.error('Available: provider, model, baseUrl, apiKey, apiKeyEnv, minLength, systemPrompt');
+      console.error('Available: model, minLength, systemPrompt');
       process.exit(1);
   }
 
@@ -216,75 +91,33 @@ async function setField(field, value) {
   console.log(`Updated ${field} = ${JSON.stringify(config[field])}`);
 }
 
+// ─── Test ────────────────────────────────────────────────────────────────────
+
 async function testGrammarCheck() {
-  const piAi = await import('@mariozechner/pi-ai');
-  const { getOAuthApiKey } = await import('@mariozechner/pi-ai/oauth');
-  const { completeSimple, getEnvApiKey } = piAi;
+  const { checkGrammar, colorizeAnsi } = await import('../lib/grammar-engine.mjs');
 
   const testInput = 'my name are quang and I has a cat';
   console.log(`Testing grammar check...\n`);
 
   const config = loadConfig();
-  console.log(`Provider: ${config.provider}`);
   console.log(`Model: ${config.model}`);
-  if (config.baseUrl) console.log(`Base URL: ${config.baseUrl}`);
   console.log(`Input: "${testInput}"\n`);
 
-  // Resolve model
-  const model = getModel(config.provider, config.model);
-  if (config.baseUrl) model.baseUrl = config.baseUrl;
-
-  // Resolve API key (same logic as grammar-check.mjs)
-  const options = {};
-  const authFile = join(CONFIG_DIR, 'auth.json');
-  if (existsSync(authFile)) {
-    try {
-      const auth = JSON.parse(readFileSync(authFile, 'utf-8'));
-      if (auth[config.provider]) {
-        const { type, ...credentials } = auth[config.provider];
-        const result = await getOAuthApiKey(config.provider, { [config.provider]: credentials });
-        if (result) options.apiKey = result.apiKey;
-      }
-    } catch {}
-  }
-  if (!options.apiKey && config.apiKey) {
-    options.apiKey = config.apiKey;
-  } else if (!options.apiKey && config.apiKeyEnv) {
-    options.apiKey = process.env[config.apiKeyEnv] || '';
-  }
-
-  if (!options.apiKey) {
-    const defaultKey = getEnvApiKey(config.provider);
-    if (!defaultKey) {
-      console.error('Error: No API key configured.');
-      console.error('\nFix with one of:');
-      console.error(`  claude-grammar set apiKeyEnv ANTHROPIC_API_KEY`);
-      console.error(`  claude-grammar login`);
-      console.error(`  claude-grammar setup`);
-      process.exit(1);
-    }
-  }
-
   try {
-    const systemPrompt = config.systemPrompt || SYSTEM_PROMPT;
-
-    const response = await completeSimple(model, {
-      systemPrompt,
-      messages: [{ role: 'user', content: testInput, timestamp: Date.now() }]
-    }, options);
-
-    if (response.stopReason === 'error') {
-      console.error(`API error: ${response.errorMessage}`);
-      process.exit(1);
+    const result = await checkGrammar(testInput, config);
+    if (result.hasErrors) {
+      console.log(`Result:\n${result.raw}`);
+      console.log(`\nFormatted: ${colorizeAnsi(result.corrections)}`);
+    } else {
+      console.log('Result: NO_ERRORS');
     }
-
-    const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('');
-    console.log(`Result:\n${text}`);
   } catch (err) {
     console.error(`Error: ${err.message}`);
     process.exit(1);
   }
 }
+
+// ─── Agent: Claude Code ──────────────────────────────────────────────────────
 
 const CLAUDE_SETTINGS_PATH = join(process.env.HOME || process.env.USERPROFILE, '.claude', 'settings.json');
 
@@ -302,10 +135,9 @@ function saveClaudeSettings(settings) {
   writeFileSync(CLAUDE_SETTINGS_PATH, JSON.stringify(settings, null, 2) + '\n');
 }
 
-async function installHooks() {
+async function installClaude() {
   const { execSync } = await import('child_process');
 
-  // Install globally for a stable path
   console.log('Installing cc-grammar globally...');
   try {
     execSync('npm install -g cc-grammar', { stdio: 'inherit' });
@@ -314,7 +146,6 @@ async function installHooks() {
     process.exit(1);
   }
 
-  // Find the global install path
   const globalRoot = execSync('npm root -g', { encoding: 'utf-8' }).trim();
   const scriptDir = join(globalRoot, 'cc-grammar', 'scripts');
 
@@ -323,16 +154,14 @@ async function installHooks() {
     process.exit(1);
   }
 
-  // Register hooks in ~/.claude/settings.json
   const settings = loadClaudeSettings();
 
-  // Add UserPromptSubmit hook
   if (!settings.hooks) settings.hooks = {};
   if (!settings.hooks.UserPromptSubmit) settings.hooks.UserPromptSubmit = [];
 
   // Remove existing cc-grammar hooks
   settings.hooks.UserPromptSubmit = settings.hooks.UserPromptSubmit.filter(
-    h => !JSON.stringify(h).includes('grammar-check.mjs')
+    h => !JSON.stringify(h).includes('grammar-check.mjs') && !JSON.stringify(h).includes('cc-grammar')
   );
 
   settings.hooks.UserPromptSubmit.push({
@@ -344,7 +173,6 @@ async function installHooks() {
     }]
   });
 
-  // Add status line
   settings.statusLine = {
     type: 'command',
     command: `${scriptDir}/grammar-statusline.sh`
@@ -352,40 +180,248 @@ async function installHooks() {
 
   saveClaudeSettings(settings);
 
-  console.log('\nInstalled successfully!');
+  console.log('\n✅ Claude Code — installed successfully!');
   console.log(`  Hook: node ${scriptDir}/grammar-check.mjs`);
   console.log(`  Status line: ${scriptDir}/grammar-statusline.sh`);
-  console.log('\nRun "npx cc-grammar setup" to configure provider/model.');
 }
 
-async function uninstallHooks() {
+async function uninstallClaude() {
   const settings = loadClaudeSettings();
 
-  // Remove hooks
   if (settings.hooks?.UserPromptSubmit) {
     settings.hooks.UserPromptSubmit = settings.hooks.UserPromptSubmit.filter(
-      h => !JSON.stringify(h).includes('grammar-check.mjs')
+      h => !JSON.stringify(h).includes('grammar-check.mjs') && !JSON.stringify(h).includes('cc-grammar')
     );
     if (!settings.hooks.UserPromptSubmit.length) delete settings.hooks.UserPromptSubmit;
     if (!Object.keys(settings.hooks).length) delete settings.hooks;
   }
 
-  // Remove status line if it's ours
-  if (settings.statusLine?.command?.includes('grammar-statusline')) {
+  if (settings.statusLine?.command?.includes('grammar-statusline') || settings.statusLine?.command?.includes('cc-grammar')) {
     delete settings.statusLine;
   }
 
   saveClaudeSettings(settings);
-  console.log('Hooks removed from ~/.claude/settings.json');
+  console.log('✅ Claude Code — hooks removed from ~/.claude/settings.json');
 
-  // Uninstall global package
   const { execSync } = await import('child_process');
   try {
     execSync('npm uninstall -g cc-grammar', { stdio: 'inherit' });
     console.log('Global package removed.');
   } catch {}
+}
 
-  console.log('\nUninstalled successfully.');
+// ─── Agent: Codex CLI ────────────────────────────────────────────────────────
+
+async function installCodex() {
+  const { execSync } = await import('child_process');
+
+  console.log('Installing cc-grammar globally...');
+  try {
+    execSync('npm install -g cc-grammar', { stdio: 'inherit' });
+  } catch {
+    console.error('Failed to install globally. Try: sudo npm install -g cc-grammar');
+    process.exit(1);
+  }
+
+  const globalRoot = execSync('npm root -g', { encoding: 'utf-8' }).trim();
+  const adapterPath = join(globalRoot, 'cc-grammar', 'adapters', 'codex', 'hook.mjs');
+
+  if (!existsSync(adapterPath)) {
+    console.error('Error: Could not find codex adapter at ' + adapterPath);
+    process.exit(1);
+  }
+
+  const codexDir = join(process.env.HOME || process.env.USERPROFILE, '.codex');
+  mkdirSync(codexDir, { recursive: true });
+
+  const hooksPath = join(codexDir, 'hooks.json');
+  let hooks = {};
+  try {
+    if (existsSync(hooksPath)) {
+      hooks = JSON.parse(readFileSync(hooksPath, 'utf-8'));
+    }
+  } catch {}
+
+  if (!hooks.UserPromptSubmit) hooks.UserPromptSubmit = [];
+
+  // Remove existing cc-grammar hooks
+  hooks.UserPromptSubmit = hooks.UserPromptSubmit.filter(
+    h => !JSON.stringify(h).includes('cc-grammar')
+  );
+
+  hooks.UserPromptSubmit.push({
+    hooks: [{
+      type: 'command',
+      command: `node ${adapterPath}`,
+      timeout: 15000
+    }]
+  });
+
+  writeFileSync(hooksPath, JSON.stringify(hooks, null, 2) + '\n');
+
+  console.log('\n✅ Codex CLI — installed successfully!');
+  console.log(`  Hook: node ${adapterPath}`);
+  console.log(`  Config: ${hooksPath}`);
+}
+
+async function uninstallCodex() {
+  const codexHooksPath = join(process.env.HOME || process.env.USERPROFILE, '.codex', 'hooks.json');
+  try {
+    if (existsSync(codexHooksPath)) {
+      const hooks = JSON.parse(readFileSync(codexHooksPath, 'utf-8'));
+      if (hooks.UserPromptSubmit) {
+        hooks.UserPromptSubmit = hooks.UserPromptSubmit.filter(
+          h => !JSON.stringify(h).includes('cc-grammar')
+        );
+        if (!hooks.UserPromptSubmit.length) delete hooks.UserPromptSubmit;
+      }
+      writeFileSync(codexHooksPath, JSON.stringify(hooks, null, 2) + '\n');
+    }
+  } catch {}
+  console.log('✅ Codex CLI — hooks removed from ~/.codex/hooks.json');
+}
+
+// ─── Agent: Gemini CLI ───────────────────────────────────────────────────────
+
+async function installGemini() {
+  const { execSync } = await import('child_process');
+
+  console.log('Installing cc-grammar globally...');
+  try {
+    execSync('npm install -g cc-grammar', { stdio: 'inherit' });
+  } catch {
+    console.error('Failed to install globally. Try: sudo npm install -g cc-grammar');
+    process.exit(1);
+  }
+
+  const globalRoot = execSync('npm root -g', { encoding: 'utf-8' }).trim();
+  const adapterPath = join(globalRoot, 'cc-grammar', 'adapters', 'gemini', 'hook.mjs');
+
+  if (!existsSync(adapterPath)) {
+    console.error('Error: Could not find gemini adapter at ' + adapterPath);
+    process.exit(1);
+  }
+
+  const geminiDir = join(process.env.HOME || process.env.USERPROFILE, '.gemini');
+  mkdirSync(geminiDir, { recursive: true });
+
+  const settingsPath = join(geminiDir, 'settings.json');
+  let settings = {};
+  try {
+    if (existsSync(settingsPath)) {
+      settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
+    }
+  } catch {}
+
+  if (!settings.hooks) settings.hooks = {};
+  if (!settings.hooks.UserPromptSubmit) settings.hooks.UserPromptSubmit = [];
+
+  // Remove existing cc-grammar hooks
+  settings.hooks.UserPromptSubmit = settings.hooks.UserPromptSubmit.filter(
+    h => !JSON.stringify(h).includes('cc-grammar')
+  );
+
+  settings.hooks.UserPromptSubmit.push({
+    hooks: [{
+      type: 'command',
+      command: `node ${adapterPath}`,
+      timeout: 15000
+    }]
+  });
+
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
+
+  console.log('\n✅ Gemini CLI — installed successfully!');
+  console.log(`  Hook: node ${adapterPath}`);
+  console.log(`  Config: ${settingsPath}`);
+}
+
+async function uninstallGemini() {
+  const geminiSettingsPath = join(process.env.HOME || process.env.USERPROFILE, '.gemini', 'settings.json');
+  try {
+    if (existsSync(geminiSettingsPath)) {
+      const settings = JSON.parse(readFileSync(geminiSettingsPath, 'utf-8'));
+      if (settings.hooks?.UserPromptSubmit) {
+        settings.hooks.UserPromptSubmit = settings.hooks.UserPromptSubmit.filter(
+          h => !JSON.stringify(h).includes('cc-grammar')
+        );
+        if (!settings.hooks.UserPromptSubmit.length) delete settings.hooks.UserPromptSubmit;
+        if (settings.hooks && !Object.keys(settings.hooks).length) delete settings.hooks;
+      }
+      writeFileSync(geminiSettingsPath, JSON.stringify(settings, null, 2) + '\n');
+    }
+  } catch {}
+  console.log('✅ Gemini CLI — hooks removed from ~/.gemini/settings.json');
+}
+
+// ─── Agent: Pi ───────────────────────────────────────────────────────────────
+
+function installPi() {
+  console.log('\n✅ Pi Coding Agent — install via pi\'s package manager:\n');
+  console.log('  pi install npm:cc-grammar\n');
+  console.log('Or test without installing:\n');
+  console.log('  pi -e npm:cc-grammar\n');
+  console.log('The extension auto-discovers and uses your cc-grammar config.');
+  console.log('Requires Claude Code CLI to be installed.');
+}
+
+function uninstallPi() {
+  console.log('\n✅ Pi Coding Agent — uninstall via pi\'s package manager:\n');
+  console.log('  pi remove npm:cc-grammar\n');
+}
+
+// ─── Multi-agent install/uninstall router ────────────────────────────────────
+
+function parseAgentFlag(args) {
+  const idx = args.indexOf('--agent');
+  if (idx !== -1 && args[idx + 1]) {
+    return args[idx + 1].toLowerCase();
+  }
+  // Also check for direct flags like --claude, --pi, etc.
+  for (const key of Object.keys(AGENTS)) {
+    if (args.includes(`--${key}`)) return key;
+  }
+  return null;
+}
+
+async function installHooks(args) {
+  const agent = parseAgentFlag(args);
+
+  if (agent) {
+    switch (agent) {
+      case 'claude': return installClaude();
+      case 'codex': return installCodex();
+      case 'gemini': return installGemini();
+      case 'pi': return installPi();
+      default:
+        console.error(`Unknown agent: ${agent}`);
+        console.error(`Supported: claude, codex, gemini, pi`);
+        process.exit(1);
+    }
+  }
+
+  // Default: install for Claude Code (backward compat)
+  return installClaude();
+}
+
+async function uninstallHooks(args) {
+  const agent = parseAgentFlag(args);
+
+  if (agent) {
+    switch (agent) {
+      case 'claude': return uninstallClaude();
+      case 'codex': return uninstallCodex();
+      case 'gemini': return uninstallGemini();
+      case 'pi': return uninstallPi();
+      default:
+        console.error(`Unknown agent: ${agent}`);
+        console.error(`Supported: claude, codex, gemini, pi`);
+        process.exit(1);
+    }
+  }
+
+  // Default: uninstall from Claude Code (backward compat)
+  return uninstallClaude();
 }
 
 async function updatePackage() {
@@ -399,7 +435,6 @@ async function updatePackage() {
     process.exit(1);
   }
 
-  // Re-register hooks with potentially new paths
   const globalRoot = execSync('npm root -g', { encoding: 'utf-8' }).trim();
   const scriptDir = join(globalRoot, 'cc-grammar', 'scripts');
 
@@ -408,13 +443,14 @@ async function updatePackage() {
     process.exit(1);
   }
 
+  // Re-register Claude Code hooks (backward compat)
   const settings = loadClaudeSettings();
 
   if (!settings.hooks) settings.hooks = {};
   if (!settings.hooks.UserPromptSubmit) settings.hooks.UserPromptSubmit = [];
 
   settings.hooks.UserPromptSubmit = settings.hooks.UserPromptSubmit.filter(
-    h => !JSON.stringify(h).includes('grammar-check.mjs')
+    h => !JSON.stringify(h).includes('grammar-check.mjs') && !JSON.stringify(h).includes('cc-grammar')
   );
 
   settings.hooks.UserPromptSubmit.push({
@@ -439,20 +475,35 @@ async function updatePackage() {
   console.log(`  Status line: ${scriptDir}/grammar-statusline.sh`);
 }
 
-function showHelp() {
-  console.log(`Usage:
-  npx cc-grammar install                Install hooks into Claude Code
-  npx cc-grammar update                 Update to latest version
-  npx cc-grammar uninstall              Remove hooks from Claude Code
-  npx cc-grammar setup                  Interactive setup wizard
-  npx cc-grammar set <field> <val>      Update a single setting
-  npx cc-grammar config                 Show current config
-  npx cc-grammar test                   Test grammar check with sample input
-  npx cc-grammar login                  OAuth login for current provider
-  npx cc-grammar providers              List available providers
-  npx cc-grammar models                 List models for current provider
+// ─── Help & info ─────────────────────────────────────────────────────────────
 
-Fields for 'set': provider, model, baseUrl, apiKey, apiKeyEnv, minLength, systemPrompt
+function showHelp() {
+  console.log(`cc-grammar — Grammar checking for coding agents
+
+Uses \`claude -p\` (Claude Code pipe mode) — no API key needed.
+
+Usage:
+  npx cc-grammar install [--agent <name>]   Install hooks (default: claude)
+  npx cc-grammar uninstall [--agent <name>] Remove hooks (default: claude)
+  npx cc-grammar update                     Update to latest version
+  npx cc-grammar setup                      Interactive model setup
+  npx cc-grammar set <field> <val>          Update a single setting
+  npx cc-grammar config                     Show current config
+  npx cc-grammar test                       Test grammar check with sample input
+  npx cc-grammar models                     List available model aliases
+
+Supported agents:
+  claude    Claude Code (default)
+  pi        Pi Coding Agent (via pi install npm:cc-grammar)
+  codex     Codex CLI
+  gemini    Gemini CLI
+
+Examples:
+  npx cc-grammar install                    # Install for Claude Code
+  npx cc-grammar install --agent codex      # Install for Codex CLI
+  npx cc-grammar set model sonnet           # Use Sonnet instead of Haiku
+
+Settings fields: model, minLength, systemPrompt
   Use 'set systemPrompt default' to reset to built-in prompt`);
 }
 
@@ -461,46 +512,29 @@ function showConfig() {
   console.log(JSON.stringify(config, null, 2));
 }
 
-function listProviders() {
-  const providers = getProviders();
-  console.log('Available providers:\n');
-  providers.forEach(p => console.log(`  ${p}`));
-}
-
 function listModels() {
-  const config = loadConfig();
-  const models = getModels(config.provider);
-  console.log(`Models for ${config.provider}:\n`);
-  models.forEach(m => console.log(`  ${m.id}`));
+  console.log('Available model aliases:\n');
+  console.log('  haiku   (default, fast & cheap)');
+  console.log('  sonnet');
+  console.log('  opus');
+  console.log('\nOr use a full model ID (e.g. claude-haiku-4-5-20251001)');
 }
 
-async function oauthLogin() {
-  const config = loadConfig();
-  const { execSync } = await import('child_process');
-  console.log(`Logging in to ${config.provider} via OAuth...\n`);
-  try {
-    execSync('npx @mariozechner/pi-ai login ' + config.provider, {
-      stdio: 'inherit',
-      cwd: CONFIG_DIR
-    });
-  } catch {
-    console.error('OAuth login failed.');
-    process.exit(1);
-  }
-}
+// ─── CLI entry ───────────────────────────────────────────────────────────────
 
-// CLI entry
-const [command, ...args] = process.argv.slice(2);
+const allArgs = process.argv.slice(2);
+const command = allArgs[0];
+const args = allArgs.slice(1);
 
 switch (command) {
   case 'install':
-    await installHooks();
+    await installHooks(args);
     break;
   case 'update':
     await updatePackage();
     break;
   case 'uninstall':
-    await uninstallHooks();
+    await uninstallHooks(args);
     break;
   case undefined:
   case 'setup':
@@ -508,7 +542,7 @@ switch (command) {
     break;
   case 'set':
     if (args.length < 2) {
-      console.error('Usage: npx claude-grammar set <field> <value>');
+      console.error('Usage: npx cc-grammar set <field> <value>');
       process.exit(1);
     }
     await setField(args[0], args.slice(1).join(' '));
@@ -518,12 +552,6 @@ switch (command) {
     break;
   case 'test':
     await testGrammarCheck();
-    break;
-  case 'login':
-    await oauthLogin();
-    break;
-  case 'providers':
-    listProviders();
     break;
   case 'models':
     listModels();
