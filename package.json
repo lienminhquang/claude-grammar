@@ -1,6 +1,6 @@
 {
   "name": "cc-grammar",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Grammar checking for coding agents — Claude Code, Pi, Codex CLI, Gemini CLI",
   "type": "module",
   "bin": {
